@@ -13,20 +13,42 @@ export function Admin() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    checkAuth();
+    // Check if we're returning from OAuth callback
+    const hash = window.location.hash;
+    const isOAuthCallback = hash.includes('access_token') || hash.includes('error');
+
+    if (isOAuthCallback) {
+      console.log('OAuth callback detected, waiting for session...');
+      setIsLoading(true);
+      // Give Supabase time to process the OAuth callback
+      setTimeout(() => {
+        checkAuth();
+      }, 1000);
+    } else {
+      checkAuth();
+    }
 
     // Check for signup hash
-    if (window.location.hash === '#signup') {
+    if (hash === '#signup') {
       setCurrentView('signup');
       setIsLoading(false);
     }
 
-    // Listen for hash changes
+    // Listen for hash changes (but ignore OAuth hashes)
     const handleHashChange = () => {
-      if (window.location.hash === '#signup') {
+      const newHash = window.location.hash;
+      // Ignore OAuth callback hashes
+      if (newHash.includes('access_token') || newHash.includes('error')) {
+        return;
+      }
+
+      if (newHash === '#signup') {
         setCurrentView('signup');
-      } else {
-        setCurrentView('login');
+      } else if (newHash === '' || newHash === '#') {
+        // Only change to login if not authenticated
+        if (!isAuthenticated) {
+          setCurrentView('login');
+        }
       }
     };
 
@@ -37,7 +59,13 @@ export function Admin() {
       console.log('Auth state changed:', !!session);
       setIsAuthenticated(!!session);
       if (session) {
+        console.log('Session detected, showing dashboard');
         setCurrentView('dashboard');
+        setIsLoading(false);
+        // Clean up OAuth hash from URL
+        if (window.location.hash.includes('access_token')) {
+          window.history.replaceState(null, '', window.location.pathname);
+        }
       } else if (window.location.hash !== '#signup') {
         setCurrentView('login');
       }
@@ -108,9 +136,9 @@ export function Admin() {
     return <CreateAdminAccount onAccountCreated={handleAccountCreated} onBackToLogin={handleShowLogin} />;
   }
 
-  if (currentView === 'login' || !isAuthenticated) {
-    return <AdminLogin onLogin={handleLogin} />;
+  if (isAuthenticated && currentView === 'dashboard') {
+    return <AdminDashboard onLogout={handleLogout} />;
   }
 
-  return <AdminDashboard onLogout={handleLogout} />;
+  return <AdminLogin onLogin={handleLogin} />;
 }

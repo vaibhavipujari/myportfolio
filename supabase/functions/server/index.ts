@@ -2,7 +2,7 @@ import { Hono } from 'npm:hono';
 import { cors } from 'npm:hono/cors';
 import { logger } from 'npm:hono/logger';
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import * as kv from './kv_store.tsx';
+import * as kv from './kv_store.ts';
 
 const app = new Hono();
 
@@ -25,10 +25,10 @@ const DEFAULT_ADMIN = {
 async function initializeDefaultAdmin() {
   try {
     console.log('🔍 Checking for default admin account...');
-    
+
     // Check if admin already exists
     const { data: users, error: listError } = await supabase.auth.admin.listUsers();
-    
+
     if (listError) {
       console.error('❌ Error listing users:', listError);
       return;
@@ -45,7 +45,7 @@ async function initializeDefaultAdmin() {
     // If no users exist or default admin doesn't exist, create it
     if (!users || users.users.length === 0 || !defaultAdminExists) {
       console.log('📝 Creating default admin account...');
-      
+
       const { data, error } = await supabase.auth.admin.createUser({
         email: DEFAULT_ADMIN.email,
         password: DEFAULT_ADMIN.password,
@@ -89,12 +89,12 @@ async function requireAuth(c: any, next: any) {
   if (!accessToken) {
     return c.json({ error: 'Unauthorized - No token provided' }, 401);
   }
-  
+
   const { data: { user }, error } = await supabase.auth.getUser(accessToken);
   if (error || !user?.id) {
     return c.json({ error: 'Unauthorized - Invalid token' }, 401);
   }
-  
+
   c.set('userId', user.id);
   await next();
 }
@@ -103,7 +103,7 @@ async function requireAuth(c: any, next: any) {
 app.post('/make-server-9576ae76/auth/signup', async (c) => {
   try {
     const { email, password, name } = await c.req.json();
-    
+
     if (!email || !password) {
       return c.json({ error: 'Email and password are required' }, 400);
     }
@@ -119,19 +119,19 @@ app.post('/make-server-9576ae76/auth/signup', async (c) => {
     if (userExists) {
       return c.json({ error: 'User with this email already exists' }, 400);
     }
-    
+
     const { data, error } = await supabase.auth.admin.createUser({
       email,
       password,
       user_metadata: { name },
       email_confirm: true, // Auto-confirm since no email server configured
     });
-    
+
     if (error) {
       console.error('Signup error:', error);
       return c.json({ error: error.message }, 400);
     }
-    
+
     console.log('✅ User created successfully:', data.user.email);
     return c.json({ user: data.user });
   } catch (error) {
@@ -197,10 +197,10 @@ app.post('/make-server-9576ae76/projects', requireAuth, async (c) => {
   try {
     const newProject = await c.req.json();
     const projects = await kv.get('portfolio_projects') || [];
-    
+
     newProject.id = Date.now();
     projects.push(newProject);
-    
+
     await kv.set('portfolio_projects', projects);
     return c.json({ success: true, project: newProject });
   } catch (error) {
@@ -215,15 +215,15 @@ app.put('/make-server-9576ae76/projects/:id', requireAuth, async (c) => {
     const id = parseInt(c.req.param('id'));
     const updatedProject = await c.req.json();
     const projects = await kv.get('portfolio_projects') || [];
-    
+
     const index = projects.findIndex((p: any) => p.id === id);
     if (index === -1) {
       return c.json({ error: 'Project not found' }, 404);
     }
-    
+
     projects[index] = { ...projects[index], ...updatedProject, id };
     await kv.set('portfolio_projects', projects);
-    
+
     return c.json({ success: true, project: projects[index] });
   } catch (error) {
     console.error('Update project error:', error);
@@ -236,10 +236,10 @@ app.delete('/make-server-9576ae76/projects/:id', requireAuth, async (c) => {
   try {
     const id = parseInt(c.req.param('id'));
     const projects = await kv.get('portfolio_projects') || [];
-    
+
     const filtered = projects.filter((p: any) => p.id !== id);
     await kv.set('portfolio_projects', filtered);
-    
+
     return c.json({ success: true });
   } catch (error) {
     console.error('Delete project error:', error);
@@ -252,29 +252,29 @@ app.post('/make-server-9576ae76/resume/upload', requireAuth, async (c) => {
   try {
     const formData = await c.req.formData();
     const file = formData.get('file') as File;
-    
+
     if (!file) {
       return c.json({ error: 'No file provided' }, 400);
     }
-    
+
     const fileBuffer = await file.arrayBuffer();
     const fileName = `resume-${Date.now()}.pdf`;
-    
+
     const { data, error } = await supabase.storage
       .from(bucketName)
       .upload(fileName, fileBuffer, {
         contentType: 'application/pdf',
         upsert: true,
       });
-    
+
     if (error) {
       console.error('Upload error:', error);
       return c.json({ error: 'Failed to upload resume' }, 500);
     }
-    
+
     // Store the filename in KV
     await kv.set('portfolio_resume', fileName);
-    
+
     return c.json({ success: true, fileName });
   } catch (error) {
     console.error('Resume upload error:', error);
@@ -286,20 +286,20 @@ app.post('/make-server-9576ae76/resume/upload', requireAuth, async (c) => {
 app.get('/make-server-9576ae76/resume', async (c) => {
   try {
     const fileName = await kv.get('portfolio_resume');
-    
+
     if (!fileName) {
       return c.json({ error: 'No resume found' }, 404);
     }
-    
+
     const { data, error } = await supabase.storage
       .from(bucketName)
       .createSignedUrl(fileName, 3600); // 1 hour expiry
-    
+
     if (error) {
       console.error('Get resume URL error:', error);
       return c.json({ error: 'Failed to get resume URL' }, 500);
     }
-    
+
     return c.json({ url: data.signedUrl });
   } catch (error) {
     console.error('Get resume error:', error);
